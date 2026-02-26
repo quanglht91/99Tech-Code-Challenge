@@ -1,0 +1,28 @@
+sequenceDiagram
+    participant Client
+    participant APIServer as API Server
+    participant Redis as Redis (Leaderboard)
+    participant DB as Database (User Data)
+    
+    Client->>APIServer: POST /scores/action (w/ JWT Auth)
+    activate APIServer
+    APIServer->>APIServer: Verify JWT
+    APIServer->>APIServer: Validate Action & Rate Limits
+    
+    alt Validation Failed
+        APIServer-->>Client: 400/401/403 Error
+    else Validation Passed
+        APIServer->>DB: Log Action
+        APIServer->>Redis: ZINCRBY (Increment Score)
+        Redis-->>APIServer: New Score / Rank
+        
+        APIServer->>Redis: ZREVRANGE (Get Top 10)
+        Redis-->>APIServer: Top 10 List
+        
+        opt Top 10 Changed
+            APIServer--)Client: WebSocket: scoreboard_update (Broadast to all)
+        end
+        
+        APIServer-->>Client: 200 OK (New Score)
+    end
+    deactivate APIServer
